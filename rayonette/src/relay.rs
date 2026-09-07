@@ -795,6 +795,7 @@ mod tests {
     use crate::observability::{EventSink, NoopSink};
     use crate::protocol::{FromAgent, ToAgent, PROTOCOL_VERSION};
     use crate::testing::{connection_pair, FaultInjector, LocalAgent};
+    use std::future::Future;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
     use tokio::io::{duplex, DuplexStream};
@@ -827,20 +828,21 @@ mod tests {
             self.label.clone()
         }
 
-        async fn connect(&self) -> std::io::Result<()> {
-            Ok(())
+        fn connect(&self) -> impl Future<Output = std::io::Result<()>> {
+            std::future::ready(Ok(()))
         }
 
-        async fn activate(
+        fn activate(
             &self,
             _session: (),
             _events: &dyn EventSink,
-        ) -> std::io::Result<(Connection<FaultInjector<DuplexStream>>, Self::Guard)> {
+        ) -> impl Future<Output = std::io::Result<(Connection<FaultInjector<DuplexStream>>, Self::Guard)>>
+        {
             let (client_raw, server_raw) = duplex(4096);
             let client =
                 Connection::new(FaultInjector::cut_reads_after(client_raw, self.cut_after));
             let task = tokio::spawn(serve(Connection::new(server_raw), self.registry.clone()));
-            Ok((client, task))
+            std::future::ready(Ok((client, task)))
         }
     }
 
@@ -862,15 +864,16 @@ mod tests {
             self.label.clone()
         }
 
-        async fn connect(&self) -> std::io::Result<()> {
-            Ok(())
+        fn connect(&self) -> impl Future<Output = std::io::Result<()>> {
+            std::future::ready(Ok(()))
         }
 
-        async fn activate(
+        fn activate(
             &self,
             _session: (),
             _events: &dyn EventSink,
-        ) -> std::io::Result<(Connection<DuplexStream>, Self::Guard)> {
+        ) -> impl Future<Output = std::io::Result<(Connection<DuplexStream>, Self::Guard)>>
+        {
             let (client, server) = connection_pair(256);
             let task: JoinHandle<std::io::Result<()>> = match self.registry.clone() {
                 Some(registry) => tokio::spawn(serve(server, registry)),
@@ -883,7 +886,7 @@ mod tests {
                     Ok(())
                 }),
             };
-            Ok((client, task))
+            std::future::ready(Ok((client, task)))
         }
     }
 
@@ -905,15 +908,16 @@ mod tests {
             "sub-relay".to_string()
         }
 
-        async fn connect(&self) -> std::io::Result<()> {
-            Ok(())
+        fn connect(&self) -> impl Future<Output = std::io::Result<()>> {
+            std::future::ready(Ok(()))
         }
 
-        async fn activate(
+        fn activate(
             &self,
             _session: (),
             _events: &dyn EventSink,
-        ) -> std::io::Result<(Connection<FaultInjector<DuplexStream>>, Self::Guard)> {
+        ) -> impl Future<Output = std::io::Result<(Connection<FaultInjector<DuplexStream>>, Self::Guard)>>
+        {
             let (client_raw, server_raw) = duplex(4096);
             let client =
                 Connection::new(FaultInjector::cut_reads_after(client_raw, self.cut_after));
@@ -924,7 +928,7 @@ mod tests {
                 .collect();
             let task =
                 tokio::spawn(async move { relay(Connection::new(server_raw), leaves).await });
-            Ok((client, task))
+            std::future::ready(Ok((client, task)))
         }
     }
 
@@ -941,15 +945,16 @@ mod tests {
             "double-ready".to_string()
         }
 
-        async fn connect(&self) -> std::io::Result<()> {
-            Ok(())
+        fn connect(&self) -> impl Future<Output = std::io::Result<()>> {
+            std::future::ready(Ok(()))
         }
 
-        async fn activate(
+        fn activate(
             &self,
             _session: (),
             _events: &dyn EventSink,
-        ) -> std::io::Result<(Connection<DuplexStream>, Self::Guard)> {
+        ) -> impl Future<Output = std::io::Result<(Connection<DuplexStream>, Self::Guard)>>
+        {
             let (client, server) = connection_pair(256);
             let task = tokio::spawn(async move {
                 let (mut tx, mut rx) = server.split();
@@ -958,7 +963,7 @@ mod tests {
                 tx.send(&FromAgent::Ready { slots: 1 }).await.unwrap();
                 let _ = rx.recv::<ToAgent>().await;
             });
-            Ok((client, task))
+            std::future::ready(Ok((client, task)))
         }
     }
 
@@ -977,15 +982,16 @@ mod tests {
             "sub-relay".to_string()
         }
 
-        async fn connect(&self) -> std::io::Result<()> {
-            Ok(())
+        fn connect(&self) -> impl Future<Output = std::io::Result<()>> {
+            std::future::ready(Ok(()))
         }
 
-        async fn activate(
+        fn activate(
             &self,
             _session: (),
             _events: &dyn EventSink,
-        ) -> std::io::Result<(Connection<DuplexStream>, Self::Guard)> {
+        ) -> impl Future<Output = std::io::Result<(Connection<DuplexStream>, Self::Guard)>>
+        {
             let (client, server) = connection_pair(256);
             let leaves: Vec<LocalAgent> = self
                 .leaves
@@ -993,7 +999,7 @@ mod tests {
                 .map(|(label, registry)| LocalAgent::new(label, registry.clone()))
                 .collect();
             let task = tokio::spawn(async move { relay(server, leaves).await });
-            Ok((client, task))
+            std::future::ready(Ok((client, task)))
         }
     }
 
@@ -1889,7 +1895,7 @@ mod tests {
     /// relay future, for the control tests below.
     fn coord_and_relay_over_two_leaves() -> (
         Connection<DuplexStream>,
-        impl std::future::Future<Output = std::io::Result<()>>,
+        impl Future<Output = std::io::Result<()>>,
     ) {
         let children = vec![
             LocalAgent::new("leaf-a", Registry::new().with("slow", handler(slow))),

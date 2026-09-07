@@ -6,6 +6,7 @@
 //! phases. (Public for now so integration tests can reach it; a `testing`
 //! feature gate is a Phase 7 hardening item.)
 
+use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Mutex, PoisonError};
 use std::task::{Context, Poll};
@@ -183,18 +184,18 @@ impl Launch for LocalAgent {
         self.label.clone()
     }
 
-    async fn connect(&self) -> std::io::Result<()> {
-        Ok(())
+    fn connect(&self) -> impl Future<Output = std::io::Result<()>> {
+        std::future::ready(Ok(()))
     }
 
-    async fn activate(
+    fn activate(
         &self,
         _session: (),
         _events: &dyn EventSink,
-    ) -> std::io::Result<(Connection<DuplexStream>, Self::Guard)> {
+    ) -> impl Future<Output = std::io::Result<(Connection<DuplexStream>, Self::Guard)>> {
         let (client, server) = connection_pair(256);
         let task = tokio::spawn(serve(server, self.registry.clone()));
-        Ok((client, task))
+        std::future::ready(Ok((client, task)))
     }
 }
 

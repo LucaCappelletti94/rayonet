@@ -364,6 +364,7 @@ async fn run_or_empty<R: Remote>(remote: &R, command: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{content_hash, provision, CommandOutput, NodeState, Provisioned, Remote};
+    use std::future::Future;
     use std::sync::Mutex;
 
     /// A scripted host: it answers the ladder's probes by configuration and
@@ -409,7 +410,7 @@ mod tests {
     }
 
     impl Remote for MockRemote {
-        async fn run(&self, command: &str) -> std::io::Result<CommandOutput> {
+        fn run(&self, command: &str) -> impl Future<Output = std::io::Result<CommandOutput>> {
             self.calls.lock().unwrap().push(command.to_string());
             let out = if command.contains("uname") {
                 CommandOutput {
@@ -438,12 +439,12 @@ mod tests {
             } else {
                 ok()
             };
-            Ok(out)
+            std::future::ready(Ok(out))
         }
 
-        async fn upload(&self, _bytes: &[u8], dest: &str) -> std::io::Result<()> {
+        fn upload(&self, _bytes: &[u8], dest: &str) -> impl Future<Output = std::io::Result<()>> {
             self.uploads.lock().unwrap().push(dest.to_string());
-            Ok(())
+            std::future::ready(Ok(()))
         }
     }
 
@@ -618,19 +619,20 @@ mod tests {
     }
 
     impl Remote for ProbeHost {
-        async fn run(&self, command: &str) -> std::io::Result<CommandOutput> {
+        fn run(&self, command: &str) -> impl Future<Output = std::io::Result<CommandOutput>> {
             if command.contains("uname -s") {
-                return Ok(out(0, self.os));
+                return std::future::ready(Ok(out(0, self.os)));
             }
             for (needle, stdout) in &self.replies {
                 if command.contains(needle) {
-                    return Ok(out(0, stdout));
+                    return std::future::ready(Ok(out(0, stdout)));
                 }
             }
-            Ok(out(1, ""))
+            std::future::ready(Ok(out(1, "")))
         }
-        async fn upload(&self, _bytes: &[u8], _dest: &str) -> std::io::Result<()> {
-            Ok(())
+
+        fn upload(&self, _bytes: &[u8], _dest: &str) -> impl Future<Output = std::io::Result<()>> {
+            std::future::ready(Ok(()))
         }
     }
 

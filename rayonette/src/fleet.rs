@@ -887,16 +887,18 @@ impl Launch for Subprocess {
 
     // A local subprocess has no transport to establish and uses the default
     // (unknown) profile; it spawns directly in `activate`.
-    async fn connect(&self) -> std::io::Result<()> {
-        Ok(())
+    fn connect(&self) -> impl Future<Output = std::io::Result<()>> {
+        std::future::ready(Ok(()))
     }
 
-    async fn activate(
+    fn activate(
         &self,
         _session: (),
         _events: &dyn EventSink,
-    ) -> std::io::Result<(Connection<Self::Stream>, Self::Guard)> {
-        crate::process::spawn(tokio::process::Command::new(&self.program))
+    ) -> impl Future<Output = std::io::Result<(Connection<Self::Stream>, Self::Guard)>> {
+        std::future::ready(crate::process::spawn(tokio::process::Command::new(
+            &self.program,
+        )))
     }
 }
 
@@ -975,6 +977,7 @@ mod tests {
     use crate::agent::{serve, Registry};
     use crate::framing::Connection;
     use crate::testing::connection_pair;
+    use std::future::Future;
     use tokio::io::DuplexStream;
     use tokio::task::JoinHandle;
 
@@ -1070,35 +1073,45 @@ mod tests {
             self.label.clone()
         }
 
-        async fn connect(&self) -> std::io::Result<Registry> {
+        fn connect(&self) -> impl Future<Output = std::io::Result<Registry>> {
             if let Some((counter, fail_below)) = &self.connect_gate {
                 if counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst) < *fail_below {
-                    return Err(std::io::Error::other("simulated unreachable host"));
+                    return std::future::ready(Err(std::io::Error::other(
+                        "simulated unreachable host",
+                    )));
                 }
             }
-            self.registry
-                .clone()
-                .ok_or_else(|| std::io::Error::other("simulated launch failure"))
+            std::future::ready(
+                self.registry
+                    .clone()
+                    .ok_or_else(|| std::io::Error::other("simulated launch failure")),
+            )
         }
 
-        async fn probe(&self, _session: &Registry) -> std::io::Result<NodeProfile> {
+        fn probe(&self, _session: &Registry) -> impl Future<Output = std::io::Result<NodeProfile>> {
             if self.probe_fails {
-                return Err(std::io::Error::other("simulated probe failure"));
+                return std::future::ready(Err(std::io::Error::other("simulated probe failure")));
             }
-            Ok(self.profile.clone().unwrap_or_else(NodeProfile::unknown))
+            std::future::ready(Ok(self
+                .profile
+                .clone()
+                .unwrap_or_else(NodeProfile::unknown)))
         }
 
-        async fn activate(
+        fn activate(
             &self,
             registry: Registry,
             _events: &dyn EventSink,
-        ) -> std::io::Result<(Connection<DuplexStream>, Self::Guard)> {
+        ) -> impl Future<Output = std::io::Result<(Connection<DuplexStream>, Self::Guard)>>
+        {
             if self.activate_fails {
-                return Err(std::io::Error::other("simulated activation failure"));
+                return std::future::ready(Err(std::io::Error::other(
+                    "simulated activation failure",
+                )));
             }
             let (client, server) = connection_pair(256);
             let task = tokio::spawn(serve(server, registry));
-            Ok((client, task))
+            std::future::ready(Ok((client, task)))
         }
     }
 
@@ -1135,30 +1148,31 @@ mod tests {
             self.label.clone()
         }
 
-        async fn connect(&self) -> std::io::Result<()> {
-            Ok(())
+        fn connect(&self) -> impl Future<Output = std::io::Result<()>> {
+            std::future::ready(Ok(()))
         }
 
-        async fn probe(&self, _session: &()) -> std::io::Result<NodeProfile> {
+        fn probe(&self, _session: &()) -> impl Future<Output = std::io::Result<NodeProfile>> {
             self.log
                 .lock()
                 .unwrap()
                 .push(format!("probe {}", self.label));
-            Ok(NodeProfile::unknown())
+            std::future::ready(Ok(NodeProfile::unknown()))
         }
 
-        async fn activate(
+        fn activate(
             &self,
             _session: (),
             _events: &dyn EventSink,
-        ) -> std::io::Result<(Connection<DuplexStream>, Self::Guard)> {
+        ) -> impl Future<Output = std::io::Result<(Connection<DuplexStream>, Self::Guard)>>
+        {
             self.log
                 .lock()
                 .unwrap()
                 .push(format!("activate {}", self.label));
             let (client, server) = connection_pair(256);
             let task = tokio::spawn(serve(server, self.registry.clone()));
-            Ok((client, task))
+            std::future::ready(Ok((client, task)))
         }
     }
 
